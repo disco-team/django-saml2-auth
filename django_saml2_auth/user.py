@@ -117,7 +117,13 @@ def get_or_create_user(request: HttpRequest, user: Dict[str, Any], extra_data: O
     try:
         target_user = get_user(user)
     except user_model.DoesNotExist:
-        should_create_new_user = dictor(saml2_auth_settings, "CREATE_USER", True)
+        create_user_jit_check = dictor(
+            saml2_auth_settings, "TRIGGER.CREATE_USER_JIT_CHECK"
+        )
+        should_create_new_user = run_hook(create_user_jit_check, extra_data)
+        if should_create_new_user is None:
+            should_create_new_user = dictor(saml2_auth_settings, "CREATE_USER", True)
+
         if should_create_new_user:
             user_id = get_user_id(user)
             if not user_id:
