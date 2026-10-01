@@ -123,7 +123,7 @@ def trigger_change_first_name(request, user: Union[str, Dict[str, str]], target_
     _user.save()
 
 
-def trigger_get_user(user: Dict) -> User:
+def trigger_get_user(user: Dict) -> User:  # type: ignore[valid-type]
     """Trigger function to get a user.
 
     Args:
@@ -344,11 +344,12 @@ def test_get_user_trigger(settings: SettingsWrapper):
     user_model = get_user_model()
     user_model.objects.create(
         username="test_example_com", email="test@example.com")
-    created, user = get_or_create_user({
+    request = mock.Mock()
+    created, user = get_or_create_user(request, {
         "username": "test@example.com",
         "first_name": "John",
         "last_name": "Doe"
-    })
+    }, None)
     assert created is False
     assert user.username == "test_example_com"
 
@@ -422,7 +423,8 @@ def test_get_or_create_user_should_not_create_group(settings: SettingsWrapper):
     }
 
     Group.objects.create(name="users")
-    created, user = get_or_create_user({
+    request = mock.Mock()
+    created, user = get_or_create_user(request, {
         "username": "test@example.com",
         "first_name": "John",
         "last_name": "Doe",
@@ -432,7 +434,7 @@ def test_get_or_create_user_should_not_create_group(settings: SettingsWrapper):
             "user.last_name": "Doe",
             "groups": ["users", "consumers"]
         }
-    })
+    }, None)
     assert created
     assert user.username == "test@example.com"
     assert user.is_active is True
@@ -458,7 +460,8 @@ def test_get_or_create_user_should_create_group(settings: SettingsWrapper):
     }
 
     Group.objects.create(name="users")
-    created, user = get_or_create_user({
+    request = mock.Mock()
+    created, user = get_or_create_user(request, {
         "username": "test@example.com",
         "first_name": "John",
         "last_name": "Doe",
@@ -468,7 +471,7 @@ def test_get_or_create_user_should_create_group(settings: SettingsWrapper):
             "user.last_name": "Doe",
             "groups": ["users", "consumers"]
         }
-    })
+    }, None)
     assert created
     assert user.username == "test@example.com"
     assert user.is_active is True
@@ -497,7 +500,9 @@ def test_get_or_create_user_should_create_and_map_group(settings: SettingsWrappe
     }
 
     Group.objects.create(name="users")
+    request = mock.Mock()
     created, user = get_or_create_user(
+        request,
         {
             "username": "test@example.com",
             "first_name": "John",
@@ -508,7 +513,8 @@ def test_get_or_create_user_should_create_and_map_group(settings: SettingsWrappe
                 "user.last_name": "Doe",
                 "groups": ["users", "consumers"],
             },
-        }
+        },
+        None,
     )
     assert created
     assert user.username == "test@example.com"

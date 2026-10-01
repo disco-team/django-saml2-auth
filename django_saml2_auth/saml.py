@@ -145,7 +145,7 @@ def get_metadata(request: HttpRequest, user_id: Optional[str] = None, **extra_da
 def get_saml_client(domain: str,
                     acs: Callable[..., HttpResponse],
                     request: HttpRequest,
-                    user_id: str = None,
+                    user_id: Optional[str] = None,
                     saml_response: Optional[str] = None,
                     **extra_data) -> Optional[Saml2Client]:
     """Create a new Saml2Config object with the given config and return an initialized Saml2Client
