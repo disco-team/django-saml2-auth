@@ -112,7 +112,7 @@ def get_metadata_auto_conf_urls_inline(request, user_id: Optional[str] = None) -
     Returns:
         list: Either an empty list or a list of valid metadata URL(s)
     """
-    return [{"inline": METADATA1}]
+    return [{"inline": METADATA1}]  # type: ignore[dict-item]
 
 
 def get_user_identity() -> Mapping[str, List[str]]:
@@ -434,7 +434,7 @@ def test_get_saml_client_success_with_key_and_cert_files(
     for key, value in supplied_config_values.items():
         settings.SAML2_AUTH[key] = value
 
-    result = get_saml_client("example.com", acs)
+    result = get_saml_client("example.com", acs, mock.Mock())
     assert isinstance(result, Saml2Client)
     assert result.config.encryption_keypairs == expected_encryption_keypairs
 
@@ -522,11 +522,11 @@ def test_acs_view_when_next_url_is_none(settings: SettingsWrapper, monkeypatch: 
                         "parse_authn_request_response",
                         mock_parse_authn_request_response)
 
-    created, mock_user = user.get_or_create_user({
+    created, mock_user = user.get_or_create_user(post_request, {
         "username": "test@example.com",
         "first_name": "John",
         "last_name": "Doe"
-    })
+    }, None)
 
     monkeypatch.setattr(user,
                         "get_or_create_user",
@@ -565,11 +565,11 @@ def test_acs_view_when_redirection_state_is_passed_in_relay_state(settings: Sett
                         "parse_authn_request_response",
                         mock_parse_authn_request_response)
 
-    created, mock_user = user.get_or_create_user({
+    created, mock_user = user.get_or_create_user(post_request, {
         "username": "test@example.com",
         "first_name": "John",
         "last_name": "Doe"
-    })
+    }, None)
 
     monkeypatch.setattr(user,
                         "get_or_create_user",

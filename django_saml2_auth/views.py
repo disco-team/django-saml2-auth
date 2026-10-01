@@ -242,7 +242,7 @@ def sp_initiated_login(request: HttpRequest) -> HttpResponseRedirect:
                     "status_code": 403
                 })
             saml_client = get_saml_client(get_assertion_url(request), acs, request, user_id, **extra_data)
-            jwt_token = create_custom_or_default_jwt(user_id, **extra_data)
+            jwt_token = create_custom_or_default_jwt(user_id, **extra_data)  # type: ignore[arg-type]
             logger.debug('Created JWT token with extra data %s for user_id %s', extra_data, user_id)
             _, info = saml_client.prepare_for_authenticate(  # type: ignore
                 sign=False, relay_state=jwt_token)
