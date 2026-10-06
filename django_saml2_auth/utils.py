@@ -6,8 +6,7 @@ import base64
 from functools import wraps
 from importlib import import_module
 import logging
-from typing import (Any, Callable, Dict, Iterable, Mapping, Optional, Tuple,
-                    Union)
+from typing import Any, Callable, Dict, Iterable, Optional, Union
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -21,8 +20,8 @@ from django_saml2_auth.exceptions import SAMLAuthError
 
 
 def run_hook(function_path: str,
-             *args: Optional[Tuple[Any]],
-             **kwargs: Optional[Mapping[str, Any]]) -> Optional[Any]:
+             *args: Any,
+             **kwargs: Any) -> Optional[Any]:
     """Runs a hook function with given args and kwargs. For example, given
     "models.User.create_new_user", the "create_new_user" function is imported from
     the "models.User" module and run with args and kwargs. Functions can be

@@ -3,6 +3,7 @@ Tests for saml.py
 """
 
 from typing import Dict, Optional, List, Mapping, Union
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 import mock
@@ -17,7 +18,8 @@ from django_saml2_auth.saml import (decode_saml_response,
                                     extract_user_identity, get_assertion_url,
                                     get_default_next_url, get_metadata,
                                     get_saml_client, validate_metadata_url)
-from django_saml2_auth.views import acs
+from django_saml2_auth.user import create_jwt_token, decode_jwt_token
+from django_saml2_auth.views import acs, sp_initiated_login
 from pytest_django.fixtures import SettingsWrapper
 from saml2.client import Saml2Client
 from saml2.response import AuthnResponse
@@ -28,6 +30,16 @@ GET_METADATA_AUTO_CONF_URLS = "django_saml2_auth.tests.test_saml.get_metadata_au
 GET_METADATA_AUTO_CONF_URLS_INLINE = "django_saml2_auth.tests.test_saml.get_metadata_auto_conf_urls_inline"
 METADATA_URL1 = "https://testserver1.com/saml/sso/metadata"
 METADATA_URL2 = "https://testserver2.com/saml/sso/metadata"
+GET_IDP_METADATA_INLINE = "django_saml2_auth.tests.test_saml.get_idp_metadata_inline"
+IDP_SSO_URL = "https://idp.example.com/sso"
+IDP_METADATA = b"""
+<md:EntityDescriptor entityID="https://idp.example.com/entity"
+    xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata">
+    <md:IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+        <md:SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+            Location="https://idp.example.com/sso"/>
+    </md:IDPSSODescriptor>
+</md:EntityDescriptor>"""
 # Ref: https://en.wikipedia.org/wiki/SAML_metadata#Entity_metadata
 METADATA1 = b"""
 <md:EntityDescriptor entityID="https://testserver1.com/entity" validUntil="2025-08-30T19:10:29Z"
@@ -112,7 +124,20 @@ def get_metadata_auto_conf_urls_inline(request, user_id: Optional[str] = None) -
     Returns:
         list: Either an empty list or a list of valid metadata URL(s)
     """
-    return [{"inline": METADATA1}]
+    return [{"inline": METADATA1}]  # type: ignore[dict-item]
+
+
+def get_idp_metadata_inline(request, user_id: Optional[str] = None,
+                            **extra_data) -> List[Optional[Mapping[str, str]]]:
+    """Fixture for returning inline IdP metadata that has a single sign-on endpoint.
+
+    Args:
+        user_id (str, optional): User identifier: username or email. Defaults to None.
+
+    Returns:
+        list: A list with one inline metadata entry
+    """
+    return [{"inline": IDP_METADATA}]  # type: ignore[dict-item]
 
 
 def get_user_identity() -> Mapping[str, List[str]]:
@@ -434,7 +459,7 @@ def test_get_saml_client_success_with_key_and_cert_files(
     for key, value in supplied_config_values.items():
         settings.SAML2_AUTH[key] = value
 
-    result = get_saml_client("example.com", acs)
+    result = get_saml_client("example.com", acs, mock.Mock())
     assert isinstance(result, Saml2Client)
     assert result.config.encryption_keypairs == expected_encryption_keypairs
 
@@ -522,11 +547,11 @@ def test_acs_view_when_next_url_is_none(settings: SettingsWrapper, monkeypatch: 
                         "parse_authn_request_response",
                         mock_parse_authn_request_response)
 
-    created, mock_user = user.get_or_create_user({
+    created, mock_user = user.get_or_create_user(post_request, {
         "username": "test@example.com",
         "first_name": "John",
         "last_name": "Doe"
-    })
+    }, None)
 
     monkeypatch.setattr(user,
                         "get_or_create_user",
@@ -565,11 +590,11 @@ def test_acs_view_when_redirection_state_is_passed_in_relay_state(settings: Sett
                         "parse_authn_request_response",
                         mock_parse_authn_request_response)
 
-    created, mock_user = user.get_or_create_user({
+    created, mock_user = user.get_or_create_user(post_request, {
         "username": "test@example.com",
         "first_name": "John",
         "last_name": "Doe"
-    })
+    }, None)
 
     monkeypatch.setattr(user,
                         "get_or_create_user",
@@ -582,3 +607,55 @@ def test_acs_view_when_redirection_state_is_passed_in_relay_state(settings: Sett
 
     result = acs(post_request)
     assert result['Location'] == "/admin/logs"
+
+
+def test_sp_initiated_login_redirects_to_idp_with_relay_state(settings: SettingsWrapper):
+    """Test sp_initiated_login view to verify it decodes the incoming token and redirects to the
+    IdP with a freshly signed relay state carrying the same user and extra data.
+
+    Args:
+        settings (SettingsWrapper): Fixture for django settings
+    """
+    settings.SAML2_AUTH["TRIGGER"]["GET_METADATA_AUTO_CONF_URLS"] = GET_IDP_METADATA_INLINE
+    token = create_jwt_token("test@example.com", business_id=7)
+    assert token
+    request = RequestFactory().get("/sso/sp/", {"token": token})
+
+    result = sp_initiated_login(request)
+
+    assert result.status_code == 302
+    assert result["Location"].startswith(IDP_SSO_URL)
+    relay_state = parse_qs(urlparse(result["Location"]).query)["RelayState"][0]
+    user_id, extra_data = decode_jwt_token(relay_state)
+    assert user_id == "test@example.com"
+    assert extra_data["business_id"] == 7
+
+
+def test_sp_initiated_login_rejects_tampered_token(settings: SettingsWrapper):
+    """Test sp_initiated_login view to verify a token with an invalid signature is rejected
+    instead of redirecting to the IdP.
+
+    Args:
+        settings (SettingsWrapper): Fixture for django settings
+    """
+    settings.SAML2_AUTH["TRIGGER"]["GET_METADATA_AUTO_CONF_URLS"] = GET_IDP_METADATA_INLINE
+    token = create_jwt_token("test@example.com", business_id=7)
+    assert token
+    header, payload, _ = token.split(".")
+    request = RequestFactory().get("/sso/sp/", {"token": f"{header}.{payload}.invalidsignature"})
+
+    result = sp_initiated_login(request)
+
+    assert result.status_code == 500
+    assert b"Cannot decode JWT token." in result.content
+
+
+def test_sp_initiated_login_without_token_redirects_to_denied():
+    """Test sp_initiated_login view to verify a request without a token is sent to the denied page.
+    """
+    request = RequestFactory().get("/sso/sp/")
+
+    result = sp_initiated_login(request)
+
+    assert result.status_code == 302
+    assert result["Location"] == "/denied/"

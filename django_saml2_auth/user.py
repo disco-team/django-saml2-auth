@@ -62,7 +62,9 @@ def create_new_user(email: str,
         kwargs['last_name'] = last_name
 
     try:
-        user = user_model.objects.create_user_with_email_username(email, **kwargs)
+        # Custom manager method on the consuming project's user model, not visible to mypy.
+        user = user_model.objects.create_user_with_email_username(  # type: ignore[attr-defined]
+            email, **kwargs)
         user.is_active = is_active
         user.is_staff = is_staff
         user.is_superuser = is_superuser
@@ -120,7 +122,9 @@ def get_or_create_user(request: HttpRequest, user: Dict[str, Any], extra_data: O
         create_user_jit_check = dictor(
             saml2_auth_settings, "TRIGGER.CREATE_USER_JIT_CHECK"
         )
-        should_create_new_user = run_hook(create_user_jit_check, extra_data)
+        should_create_new_user = (
+            run_hook(create_user_jit_check, extra_data) if create_user_jit_check else None
+        )
         if should_create_new_user is None:
             should_create_new_user = dictor(saml2_auth_settings, "CREATE_USER", True)
 
@@ -410,7 +414,7 @@ def create_custom_or_default_jwt(user: Union[str, User], **extra_data):
                 "reason": "Cannot create JWT token for login.",
                 "status_code": 500
             })
-        jwt_token = create_jwt_token(user_id, **extra_data)
+        jwt_token = create_jwt_token(user_id, **extra_data)  # type: ignore[arg-type]
 
     return jwt_token
 
@@ -458,7 +462,7 @@ def decode_jwt_token(jwt_token: str) -> Tuple[Optional[str], Dict[str, str]]:
         })
 
 
-def decode_custom_or_default_jwt(jwt_token: str) -> Optional[str]:
+def decode_custom_or_default_jwt(jwt_token: str) -> Tuple[Optional[str], Dict[str, str]]:
     """Decode a JWT token, eventually using custom trigger
 
     Args:
@@ -468,7 +472,7 @@ def decode_custom_or_default_jwt(jwt_token: str) -> Optional[str]:
         SAMLAuthError: Cannot decode JWT token.
 
     Returns:
-        Optional[str]: A user_id as str or None.
+        Tuple[Optional[str], Dict[str, str]]: A user_id as str or None, and extra data.
     """
     saml2_auth_settings = settings.SAML2_AUTH
     custom_decode_jwt_trigger = dictor(saml2_auth_settings, "TRIGGER.CUSTOM_DECODE_JWT")
@@ -476,4 +480,4 @@ def decode_custom_or_default_jwt(jwt_token: str) -> Optional[str]:
         user_id = run_hook(custom_decode_jwt_trigger, jwt_token)  # type: ignore
     else:
         user_id = decode_jwt_token(jwt_token)
-    return user_id
+    return user_id  # type: ignore[return-value]
