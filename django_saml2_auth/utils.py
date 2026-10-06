@@ -6,8 +6,7 @@ import base64
 from functools import wraps
 from importlib import import_module
 import logging
-from typing import (Any, Callable, Dict, Iterable, Mapping, Optional, Tuple,
-                    Union)
+from typing import Any, Callable, Dict, Iterable, Optional, Union
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
